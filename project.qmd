@@ -1,0 +1,105 @@
+---
+title: "Olympic Beach Volleyball: Which Countries Are the Most Successful?"
+format: html
+---
+
+## My Final Project
+
+For my final project, I want to explore which countries have been the most successful in Olympic beach volleyball. I am interested in comparing countries based on their performance over time and seeing whether certain countries consistently perform better than others.
+
+## Variables I Want to Explore
+
+Some interesting variables I would like to analyze include the country representing each team, the year of the Olympics, the gender of the competition, match results, and medal placements. I want to use these variables to compare countries and identify patterns in Olympic beach volleyball success.
+
+## My Research Question
+
+Which countries have been the most successful in Olympic beach volleyball, and how has their success changed over time?
+
+## Data and Medal Comparison
+
+I used the public medalist tables from [List of Olympic medalists in beach volleyball](https://en.wikipedia.org/wiki/List_of_Olympic_medalists_in_beach_volleyball), which link to the details for each tournament. From 1996 through 2024, the men's and women's tables each have 8 rows and 4 variables: Games, Gold, Silver, and Bronze. Together, that is 16 rows and 4 variables. The code below reshapes those tables into 48 team-medal records with 4 variables: year, gender, country, and medal. Each medal is counted once for its team, not once for each athlete.
+
+I checked the totals against [Olympedia's beach volleyball overview](https://www.olympedia.org/sports/VBV), which reports 14 medals for Brazil and 11 for the United States through 2024.
+
+```{r}
+library(tidyverse)
+library(rvest)
+
+source_url <- "https://en.wikipedia.org/wiki/List_of_Olympic_medalists_in_beach_volleyball"
+source_page <- read_html(source_url)
+source_tables <- html_elements(source_page, "table.wikitable")
+beach_tables <- source_tables[3:4]
+
+read_medals <- \(table, gender) {
+  rows <- html_elements(table, "tr")[-1]
+
+  map_dfr(rows, \(row) {
+    cells <- html_elements(row, "td")
+    year <- as.integer(str_extract(html_text2(cells[[1]]), "\\d{4}"))
+
+    if (is.na(year) || year < 1996 || year > 2024) {
+      return(tibble())
+    }
+
+    tibble(
+      year = year,
+      gender = gender,
+      country_code = map_chr(cells[2:4], \(cell) {
+        str_match(html_text2(cell), "\\(([A-Z]{3})\\)")[, 2]
+      }),
+      medal = c("Gold", "Silver", "Bronze")
+    )
+  })
+}
+
+beach_medals <- map2_dfr(beach_tables, c("Men", "Women"), read_medals) |>
+  mutate(
+    country = recode(
+      country_code,
+      BRA = "Brazil",
+      USA = "United States",
+      GER = "Germany",
+      AUS = "Australia",
+      SUI = "Switzerland",
+      CAN = "Canada",
+      CHN = "China",
+      NOR = "Norway",
+      ESP = "Spain",
+      ITA = "Italy",
+      LAT = "Latvia",
+      NED = "Netherlands",
+      QAT = "Qatar",
+      ROC = "Russian Olympic Committee",
+      SWE = "Sweden",
+      .default = NA_character_
+    )
+  ) |>
+  select(year, gender, country, medal)
+
+if (nrow(beach_medals) != 48 || anyNA(beach_medals$country)) {
+  stop("The source tables did not produce all 48 medal records.")
+}
+
+country_medals <- beach_medals |>
+  count(country, name = "total_medals") |>
+  arrange(desc(total_medals))
+
+ggplot(country_medals, aes(x = reorder(country, total_medals), y = total_medals)) +
+  geom_col(fill = "#176B87", width = 0.75) +
+  geom_text(aes(label = total_medals), hjust = -0.3, fontface = "bold") +
+  coord_flip() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title = "Olympic Beach Volleyball Medals by Country",
+    subtitle = "Team medals from 1996 through 2024, men's and women's events",
+    x = NULL,
+    y = "Total medals",
+    caption = "Source: List of Olympic medalists in beach volleyball; accessed October 30, 2026."
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    panel.grid.major.y = element_blank(),
+    axis.text.y = element_text(face = "bold")
+  )
+```
